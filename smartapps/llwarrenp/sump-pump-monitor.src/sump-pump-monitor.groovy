@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.1"
+    return "2.2"
 }
 
 /*
 * Change Log:
+* 20178-6-20 - (2.2) Changed displayed time to use hub timezone instead of UTC
 * 2018-6-8   - (2.1) Tweaked for GitHub and uploaded
 * 2018-3-20  - (2.0) Reworked and added features
 * 2014-10-15 - (1.0) Initial release by @tslagle13
@@ -36,19 +37,23 @@ definition(
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-PipesLeaksAndFloods@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-PipesLeaksAndFloods@2x.png")
 
-def showLastDate(timestamp) {
+def showLastDate(timezone, timestamp) {
+	def lastDate = "Never"
+	// Calculate date from raw timestamp and timezone offset
 	if (timestamp == null) {
 		timestamp = 0
 	}
-	def lastDate = new Date(timestamp).format("EEE, MMMMM d yyyy HH:mm:ss z")
-	return lastDate
+	if (timezone == null) {
+		timezone = 0
+	}
+	def tzLocal = timestamp.toLong() + timezone.toLong()
+    if (tzLocal != 0) lastDate = new Date(tzLocal).format("EEE, MMMMM d yyyy HH:mm:ss")
+    return lastDate
 }
 
 preferences {
-	section("Sump Pump Monitor v${appVersion()}")
-	section("Last Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}")
-	section("Last Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
-    section("Sensor") {
+	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.timezoneOffset, atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.timezoneOffset, atomicState.lastAlertTimeStamp)}")
+    section("Monitor this Sensor") {
 		input "multi", "capability.accelerationSensor", title: "Which?", multiple: false, required: true
 	}
     section("Monitoring Settings") {
@@ -62,12 +67,10 @@ preferences {
 	}
 }
 
-
 def installed() {
 	log.debug "Installed with settings: ${settings}"
 	initialize()
 }
-
 
 def updated() {
 	log.debug "Updated with settings: ${settings}"
@@ -75,14 +78,13 @@ def updated() {
 	initialize()
 }
 
-
 def initialize() {
+	state[timezoneOffset()] = location.timeZone.rawOffset
 	subscribe(multi, "acceleration.active", checkFrequency)
 }
 
-
 def checkFrequency(evt) {
-	log.debug("running check sump")
+	log.debug("sump pump firing")
 	def lastTime = state[frequencyKeyAccelration(evt)]
 
 	if (lastTime == null) {
@@ -94,7 +96,7 @@ def checkFrequency(evt) {
 	}
 
 	else if (now() - lastTime <= frequency * 60000) {
-		log.debug("Last time valid")
+		log.debug("sump pump ${multi} fired twice in the last ${timepassedRound} minutes")
 		def timePassed = now() - lastTime
 		def timePassedFix = timePassed / 60000
 		def timePassedRound = Math.round(timePassedFix.toDouble()) + (unit ?: "")
@@ -108,7 +110,7 @@ def checkFrequency(evt) {
 		}
 
 		else if (now() - lastAlert >= alertfrequency * 3600000) {
-			log.debug "sending alerts"
+			log.debug "sump pump sending alerts"
 			state[frequencyAlert(evt)] = now()
 
 			if (!phone || pushAndPhone != "No") {
@@ -124,19 +126,23 @@ def checkFrequency(evt) {
 		}
 
 		else {
-        	log.debug "suppressing alert due to alert frequency"
+        	log.debug "sump pump suppressing alert due to alert frequency"
         }
 
 	}
 
 }
 
-
 private frequencyKeyAccelration(evt) {
 	"lastActionTimeStamp"
 }
 
-
 private frequencyAlert(evt) {
 	"lastAlertTimeStamp"
 }
+
+private timezoneOffset() {
+	"tzOffset"
+}
+
+// END OF FILE
