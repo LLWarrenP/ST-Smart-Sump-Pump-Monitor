@@ -47,7 +47,7 @@ def showLastDate(timezone, timestamp) {
 		timezone = 0
 	}
 	def tzLocal = timestamp.toLong() + timezone.toLong()
-    if (tzLocal != 0) lastDate = new Date(tzLocal).format("EEE, MMMMM d yyyy HH:mm:ss")
+    if (timestamp != 0) lastDate = new Date(tzLocal).format("EEE, MMMMM d yyyy HH:mm:ss")
     return lastDate
 }
 
