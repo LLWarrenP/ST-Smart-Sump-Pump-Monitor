@@ -21,7 +21,7 @@ def appVersion() {
 
 /*
 * Change Log:
-* 20178-6-20 - (2.2) Changed displayed time to use hub timezone instead of UTC
+* 20178-6-23 - (2.2) Changed displayed time to use hub timezone instead of UTC
 * 2018-6-8   - (2.1) Tweaked for GitHub and uploaded
 * 2018-3-20  - (2.0) Reworked and added features
 * 2014-10-15 - (1.0) Initial release by @tslagle13
@@ -37,30 +37,23 @@ definition(
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-PipesLeaksAndFloods@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/App-PipesLeaksAndFloods@2x.png")
 
-def showLastDate(timezone, timestamp) {
+def showLastDate(timestamp) {
 	def lastDate = "Never"
-	// Calculate date from raw timestamp and timezone offset
 	if (timestamp == null) {
 		timestamp = 0
 	}
-	if (timezone == null) {
-		timezone = 0
-	}
-	def tzLocal = timestamp.toLong() + timezone.toLong()
-    if (timestamp != 0) lastDate = new Date(tzLocal).format("EEE, MMMMM d yyyy HH:mm:ss")
+    if (timestamp != 0) lastDate = new Date(timestamp).format("EEE, MMMMM d yyyy HH:mm:ss z", location.timeZone)
     return lastDate
 }
 
 preferences {
-	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.timezoneOffset, atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.timezoneOffset, atomicState.lastAlertTimeStamp)}")
-    section("Monitor this Sensor") {
-		input "multi", "capability.accelerationSensor", title: "Which?", multiple: false, required: true
-	}
+	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
     section("Monitoring Settings") {
-		input "frequency", "decimal", title: "Window for pump running two or more times", description: "Minutes", required: true
+		input "multi", "capability.accelerationSensor", title: "Which acceleration sensor?", multiple: false, required: true
+		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", required: true
 	}
     section("Alert Settings"){
-		input "alertfrequency", "decimal", title: "Alert how often?", description: "Hours", required: false
+		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", required: false
 		input "messageText", "text", title: "Custom Alert Text (optional)", required: false
 		input "phone", "phone", title: "Phone Number (for SMS, optional)", required: false
 		input "pushAndPhone", "enum", title: "Both Push and SMS?", required: false, options: ["Yes","No"]
@@ -79,7 +72,6 @@ def updated() {
 }
 
 def initialize() {
-	state[timezoneOffset()] = location.timeZone.rawOffset
 	subscribe(multi, "acceleration.active", checkFrequency)
 }
 
@@ -139,10 +131,6 @@ private frequencyKeyAccelration(evt) {
 
 private frequencyAlert(evt) {
 	"lastAlertTimeStamp"
-}
-
-private timezoneOffset() {
-	"tzOffset"
 }
 
 // END OF FILE
