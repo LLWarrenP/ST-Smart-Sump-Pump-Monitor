@@ -14,11 +14,11 @@ first be installed into your SmartThings SmartApps repository.  For multiple sum
 
 ## Installation via GitHub Integration
 1. Open SmartThings IDE in your web browser and log into your account.
-2. Click on the "My Device Handlers" section in the navigation bar.
+2. Click on the "My SmartApps" section in the navigation bar.
 3. Click on "Settings"
 4. Click "Add New Repository"
 5. Enter "LLWarrenP" as the namespace
-6. Enter "ST-Smart-Dehumidifier" as the repository
+6. Enter "ST-Smart-Sump-Pump-Monitor" as the repository
 7. Hit "Save"
 8. Select "Update from Repo" and select "ST-Smart-Sump-Pump-Monitor"
 9. Select "smartapps/sump-pump-monitor.src/sump-pump-monitor.groovy"
@@ -26,12 +26,12 @@ first be installed into your SmartThings SmartApps repository.  For multiple sum
 
 ## Manual Installation
 1. Open SmartThings IDE in your web browser and log into your account.
-2. Click on the "My Device Handlers" section in the navigation bar.
-3. On your Device Handlers page, click on the "+ Create New Device Handler" button on the right.
-4. On the "New Device Handler" page, Select the Tab "From Code" , Copy the "sump-pump-monitor.groovy" source code from GitHub and paste it into the IDE editor window.
-5. Click the blue "Create" button at the bottom of the page. An IDE editor window containing device handler template should now open.
+2. Click on the "My SmartApps" section in the navigation bar.
+3. On your SmartApps page, click on the "+ Create New SmartApp" button on the right.
+4. On the "New SmartApps" page, Select the Tab "From Code" , Copy the "sump-pump-monitor.groovy" source code from GitHub and paste it into the IDE editor window.
+5. Click the blue "Create" button at the bottom of the page. An IDE editor window containing SmartApp code should now open.
 6. Click the blue "Save" button above the editor window.
-7. Click the "Publish" button next to it and select "For Me". You have now self-published your Device Handler.
+7. Click the "Publish" button next to it and select "For Me". You have now self-published your Smart App.
 
 # App Settings
 **Window for pump running two or more times:** The window that you want to be alerted on if the sump pump fires more than once
