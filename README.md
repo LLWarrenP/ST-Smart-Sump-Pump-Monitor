@@ -28,8 +28,8 @@ first be installed into your SmartThings SmartApps repository.  For multiple sum
 1. Open SmartThings IDE in your web browser and log into your account.
 2. Click on the "My SmartApps" section in the navigation bar.
 3. On your SmartApps page, click on the "+ Create New SmartApp" button on the right.
-4. On the "New SmartApps" page, Select the Tab "From Code" , Copy the "sump-pump-monitor.groovy" source code from GitHub and paste it into the IDE editor window.
-5. Click the blue "Create" button at the bottom of the page. An IDE editor window containing SmartApp code should now open.
+4. On the "New SmartApp" page, Select the Tab "From Code", Copy the "sump-pump-monitor.groovy" source code from GitHub and paste it into the IDE editor window.
+5. Click the blue "Create" button at the bottom of the page. An IDE editor window containing the SmartApp code should now open.
 6. Click the blue "Save" button above the editor window.
 7. Click the "Publish" button next to it and select "For Me". You have now self-published your Smart App.
 
