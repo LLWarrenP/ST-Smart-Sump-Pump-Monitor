@@ -16,12 +16,13 @@
  */
  
 def appVersion() {
-    return "2.2"
+    return "2.3"
 }
 
 /*
 * Change Log:
-* 20178-6-23 - (2.2) Changed displayed time to use hub timezone instead of UTC
+* 2018-6-26  - (2.3) Cleaned up logic and preferences to avoid unhandled errors, improved documentation
+* 2018-6-23  - (2.2) Changed displayed time to use hub timezone instead of UTC
 * 2018-6-8   - (2.1) Tweaked for GitHub and uploaded
 * 2018-3-20  - (2.0) Reworked and added features
 * 2014-10-15 - (1.0) Initial release by @tslagle13
@@ -50,10 +51,10 @@ preferences {
 	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
     section("Monitoring Settings") {
 		input "multi", "capability.accelerationSensor", title: "Which acceleration sensor?", multiple: false, required: true
-		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", required: true
+		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", range: "1..*", defaultValue: 30, required: true
 	}
     section("Alert Settings"){
-		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", required: false
+		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", range: "0..*", defaultValue: 24, required: true
 		input "messageText", "text", title: "Custom Alert Text (optional)", required: false
 		input "phone", "phone", title: "Phone Number (for SMS, optional)", required: false
 		input "pushAndPhone", "enum", title: "Both Push and SMS?", required: false, options: ["Yes","No"]
@@ -77,33 +78,38 @@ def initialize() {
 
 def checkFrequency(evt) {
 	log.debug("sump pump firing")
-	def lastTime = state[frequencyKeyAccelration(evt)]
+	def lastTime = state[frequencyPumpFired(evt)]
 
-	if (lastTime == null) {
-		state[frequencyKeyAccelration(evt)] = now()
-	}
+	// Pump has fired but check frequency
 
-	else if (now() - lastTime >= frequency * 60000) {
-		state[frequencyKeyAccelration(evt)] = now()
-	}
+	// Pump has never fired before, it's the first time so just record the event
+	if (lastTime == null) state[frequencyPumpFired(evt)] = now()
+    // Pump has fired before but the last time it did so was outside the window of interest so just record the event
+	else if ((now() - lastTime) >= (frequency * 60000)) state[frequencyPumpFired(evt)] = now()
+    // Pump has fired before and its within our specified window of interest so we need to possibly send an alert
+	else if ((now() - lastTime) <= (frequency * 60000)) {
+		def timePassed = (now() - lastTime) / 60000
+		def timePassedRound = Math.round(timePassed.toDouble()) + (unit ?: "")
+        if (timePassedRound == null) then timePassedRound = 1
+		if (alertfrequency == null) alertfrequency = 0
 
-	else if (now() - lastTime <= frequency * 60000) {
-		log.debug("sump pump ${multi} fired twice in the last ${timepassedRound} minutes")
-		def timePassed = now() - lastTime
-		def timePassedFix = timePassed / 60000
-		def timePassedRound = Math.round(timePassedFix.toDouble()) + (unit ?: "")
-		state[frequencyKeyAccelration(evt)] = now()
-		def msg = messageText ?: "Warning: ${multi} has run twice in the last ${timePassedRound} minutes."
+		// The pump has fired so record it
+		state[frequencyPumpFired(evt)] = now()
+		log.debug("sump pump ${multi} fired twice in the last ${timePassedRound} minutes")
 
+		// Check to see the last time we sent out an alert either never or some time in the past
 		def lastAlert = state[frequencyAlert(evt)]
-
 		if (lastAlert == null) {
-			state[frequencyAlert(evt)] = 0
-		}
+        	lastAlert = 0
+        	state[frequencyAlert(evt)] = 0
+        }
 
-		else if (now() - lastAlert >= alertfrequency * 3600000) {
+		// If the last time we sent an alert was greater than our window between alerts, it's time to send another alert
+		if (((now() - lastAlert)) >= (alertfrequency * 3600000)) {
 			log.debug "sump pump sending alerts"
 			state[frequencyAlert(evt)] = now()
+
+			def msg = messageText ?: "Warning: ${multi} has run twice in the last ${timePassedRound} minutes."
 
 			if (!phone || pushAndPhone != "No") {
 				log.debug "sending push"
@@ -116,16 +122,14 @@ def checkFrequency(evt) {
 			}
             
 		}
-
-		else {
-        	log.debug "sump pump suppressing alert due to alert frequency"
-        }
+        // Otherwise, if it is inside the window we want to suppress the alert but we should log it to the debug log
+		else log.debug "sump pump suppressing alert due to alert frequency"
 
 	}
 
 }
 
-private frequencyKeyAccelration(evt) {
+private frequencyPumpFired(evt) {
 	"lastActionTimeStamp"
 }
 
