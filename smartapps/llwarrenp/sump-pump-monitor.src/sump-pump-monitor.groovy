@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.3"
+    return "2.4"
 }
 
 /*
 * Change Log:
+* 2018-7-11  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
 * 2018-6-26  - (2.3) Cleaned up logic and preferences to avoid unhandled errors, improved documentation
 * 2018-6-23  - (2.2) Changed displayed time to use hub timezone instead of UTC
 * 2018-6-8   - (2.1) Tweaked for GitHub and uploaded
@@ -51,10 +52,14 @@ preferences {
 	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
     section("Monitoring Settings") {
 		input "multi", "capability.accelerationSensor", title: "Which acceleration sensor?", multiple: false, required: true
+        paragraph "The sensor will detect the inrush current as an acceleration"
 		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", range: "1..*", defaultValue: 30, required: true
+        input "heartbeat", "decimal", title: "Alert me if the sensor has not provided status in this many hours:", defaultValue: 0, range: "0..*", required: false
+        paragraph "Set this to zero (0) to disable.  This alert is to detect if the sensor is offline or otherwise not reporting for the set number of hours such as in the case where a power failure has occurred or a breaker has tripped.  Ensure that the device's normal operation is to report at least this frequent."
 	}
     section("Alert Settings"){
 		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", range: "0..*", defaultValue: 24, required: true
+        paragraph "Since the pump may continue to fire at a steady rate, this suppresses excessive alerts after the initial alert"
 		input "messageText", "text", title: "Custom Alert Text (optional)", required: false
 		input "phone", "phone", title: "Phone Number (for SMS, optional)", required: false
 		input "pushAndPhone", "enum", title: "Both Push and SMS?", required: false, options: ["Yes","No"]
@@ -74,6 +79,18 @@ def updated() {
 
 def initialize() {
 	subscribe(multi, "acceleration.active", checkFrequency)
+	// Look for any report from the device to ensure that it is powered up and reporting
+    unschedule(heartbeatAlert)
+	if (heartbeat?.toInteger() > 0) {
+    	multi.each { sen ->
+    		sen.capabilities.each { cap ->
+        		cap.attributes.each { attr ->
+            		subscribe(sen, attr.name, deviceHeartbeat)
+	       		}
+    		}
+		}
+    	runIn(heartbeat?.toInteger() * 3600, heartbeatAlert)
+    }
 }
 
 def checkFrequency(evt) {
@@ -127,6 +144,29 @@ def checkFrequency(evt) {
 
 	}
 
+}
+
+def deviceHeartbeat(evt) {
+	// We got a message from the device so we can assume it is online / active so reset the alert
+	unschedule(heartbeatAlert)
+    runIn(heartbeat?.toInteger() * 3600, heartbeatAlert)
+    log.debug "sump pump ${multi} heartbeat"
+}
+
+def heartbeatAlert() {
+	log.debug "sump pump sending heartbeat alert"
+
+	def msg = messageText ?: "Warning: ${multi} has not reported status in the last ${heartbeat} hours.  Check pump circuit for power and operation."
+
+	if (!phone || pushAndPhone != "No") {
+		log.debug "sending push"
+		sendPush(msg)
+	}
+
+	if (phone) {
+		log.debug "sending SMS"
+		sendSms(phone, msg)
+	}
 }
 
 private frequencyPumpFired(evt) {
