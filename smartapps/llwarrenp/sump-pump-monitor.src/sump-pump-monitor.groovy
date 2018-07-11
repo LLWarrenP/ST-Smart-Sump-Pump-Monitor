@@ -151,7 +151,7 @@ def deviceHeartbeat(evt) {
 	// We got a message from the device so we can assume it is online / active so reset the alert
 	unschedule(heartbeatAlert)
     runIn(heartbeat?.toInteger() * 3600, heartbeatAlert)
-    log.debug "sump pump ${multi} heartbeat"
+    log.debug "${multi} heartbeat"
 }
 
 def heartbeatAlert() {
