@@ -21,7 +21,7 @@ def appVersion() {
 
 /*
 * Change Log:
-* 2018-7-11  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
+* 2018-7-12  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
 * 2018-6-26  - (2.3) Cleaned up logic and preferences to avoid unhandled errors, improved documentation
 * 2018-6-23  - (2.2) Changed displayed time to use hub timezone instead of UTC
 * 2018-6-8   - (2.1) Tweaked for GitHub and uploaded
@@ -97,8 +97,9 @@ def checkFrequency(evt) {
 	log.debug("sump pump firing")
 	def lastTime = state[frequencyPumpFired(evt)]
 
-	// Pump has fired but check frequency
-
+	// Pump has fired so reset hearbeat, but check frequency afterwards
+	if (heartbeat?.toInteger() > 0) deviceHeartbeat(evt)
+    
 	// Pump has never fired before, it's the first time so just record the event
 	if (lastTime == null) state[frequencyPumpFired(evt)] = now()
     // Pump has fired before but the last time it did so was outside the window of interest so just record the event
