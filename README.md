@@ -34,10 +34,22 @@ first be installed into your SmartThings SmartApps repository.  For multiple sum
 7. Click the "Publish" button next to it and select "For Me". You have now self-published your Smart App.
 
 # App Settings
-**Window for pump running two or more times:** The window that you want to be alerted on if the sump pump fires more than once
+
+Set the sensor and switch (might be the same device typically, such as in the case of the Zooz switch) and then customize the behavior with the options.  Some options of note are given below.
+
+**Over what timer inerval (minutes)?:** The window that you want to be alerted on if the sump pump fires more than once
 during the window.  Alerts are sent out at this same interval to avoid excessive alerting.  For instance, if you select "2",
 an alert will be sent out if the sump pump fires twice over any two hour period and then every two hours if it continues to fire.
 
+**Alert me if the sensor has not provided status in this many hours:** This monitors all events from the sensor to ensure that it is online.  Make sure that the sensor is generating events at a shorter inverval and set this to suit to keep tabs on it.  An alert will be sent if the sensor does not send out an alert but under normal circumstances in the IDE you will see "heartbeat" messages.
+
+**Keep the switch turned on at all times** I found that the Smart Lighting rule executes much faster but it’s still within a couple of seconds max. I think the ST app is perhaps more optimized but I like having everything in one place in one app. The feature triggers on an off event and turns it on and then does a quick check and reissues the command if it still thinks it is off just to be sure. You can of course still use the ST Smart Lighting rule instead.
+
+**Check switch status every 15 minutes and turn it on if off:** Simply checks the status every 15 minutes to verify it is on and alerts you (if you have the “alert if off” option above also enabled). If you have the “keep it on” option above enabled it will attempt to turn the switch on first and then only alert if it seems to still be off.
+
+**Alert me if the switch is ever turned off:** Just a push or SMS if it finds that it is off at any point. If this option is off you won’t get any of the “it’s off” messages to your app/phone (but you will see the status in the full logging in the IDE).
+
+
 
 # App Logging
-There is no user logging other than the alert.  However, the app will log any sent or suppressed alerts to the debug log.
+There is no user logging other than the alerts.  However, the app will log any heartbeats, sent or suppressed alerts, or other routine messages to the debug log in the IDE.
