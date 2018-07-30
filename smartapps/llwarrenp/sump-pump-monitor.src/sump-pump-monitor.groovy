@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.4"
+    return "2.5"
 }
 
 /*
 * Change Log:
+* 2018-7-30  - (2.5) Added checks to ensure pump is switched on, alerts if off, and an every 15 minutes check to turn on
 * 2018-7-12  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
 * 2018-6-26  - (2.3) Cleaned up logic and preferences to avoid unhandled errors, improved documentation
 * 2018-6-23  - (2.2) Changed displayed time to use hub timezone instead of UTC
@@ -51,11 +52,16 @@ def showLastDate(timestamp) {
 preferences {
 	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
     section("Monitoring Settings") {
-		input "multi", "capability.accelerationSensor", title: "Which acceleration sensor?", multiple: false, required: true
-        paragraph "The sensor will detect the inrush current as an acceleration"
+		input "multi", "capability.accelerationSensor", title: "Monitor which acceleration sensor?", multiple: false, required: true
+        paragraph "This sensor will detect the inrush current as an acceleration"
 		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", range: "1..*", defaultValue: 30, required: true
         input "heartbeat", "decimal", title: "Alert me if the sensor has not provided status in this many hours:", defaultValue: 0, range: "0..*", required: false
         paragraph "Set this to zero (0) to disable.  This alert is to detect if the sensor is offline or otherwise not reporting for the set number of hours such as in the case where a power failure has occurred or a breaker has tripped.  Ensure that the device's normal operation is to report at least this frequent."
+        input "pumpSwitch", "capability.switch", title: "Control which switch?", multiple: false, required: true
+		paragraph "This smart switch controls power to the sump pump and its inline physical switch (can be same device as the sensor if so equipped)"
+ 		input "boolOnAlways", "bool", title: "Keep the switch turned on at all times", required: false
+        input "boolPollSwitch", "bool", title: "Check switch status every 15 minutes and turn it on if off", required: false
+   		input "boolOffAlert", "bool", title: "Alert me if the switch is ever turned off", required: false
 	}
     section("Alert Settings"){
 		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", range: "0..*", defaultValue: 24, required: true
@@ -79,6 +85,12 @@ def updated() {
 
 def initialize() {
 	subscribe(multi, "acceleration.active", checkFrequency)
+	if (boolOnAlways || boolOffAlert) subscribe(pumpSwitch, "switch.off", checkSwitch)
+	// Ensure that pump switch is on and alert if off
+    pollSwitch()
+    // Set up schedule to automatically check switch status if configured
+    unschedule(pollSwitch)
+    if (boolPollSwitch) runEvery15Minutes(pollSwitch)
 	// Look for any report from the device to ensure that it is powered up and reporting
     unschedule(heartbeatAlert)
 	if (heartbeat?.toInteger() > 0) {
@@ -145,6 +157,40 @@ def checkFrequency(evt) {
 
 	}
 
+}
+
+def pollSwitch() {
+	// Ran every 15 minutes to ensure that the switch is on
+    log.debug "checking ${pumpSwitch} status"
+	if ((pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) switchOffAlert()
+    if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) {
+        log.debug "${pumpSwitch} is switched off, turning on"
+    	pumpSwitch.on()
+    }
+}
+
+def checkSwitch(evt) {
+	// Checks event to catch a switch off event
+	if ((evt.value == "off") && (boolOnAlways)) {
+        log.debug "${pumpSwitch} was switched ${evt.value}, turning on"
+    	pumpSwitch.on()
+    }
+}
+
+def switchOffAlert() {
+	log.debug "sump pump sending switched off alert"
+    
+    def msg = messageText ?: "Warning: ${pumpSwitch} is switched off.  Check smart device and pump if unexpected."
+
+	if (!phone || pushAndPhone != "No") {
+		log.debug "sending push"
+		sendPush(msg)
+	}
+
+	if (phone) {
+		log.debug "sending SMS"
+		sendSms(phone, msg)
+	}
 }
 
 def deviceHeartbeat(evt) {
