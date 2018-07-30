@@ -176,10 +176,9 @@ def checkSwitch(evt) {
     	pumpSwitch.on()
     }
     // Just to be sure, send the command again
-    if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) {
-        log.debug "${pumpSwitch} is switched off, turning on"
-    	pumpSwitch.on()
-    }
+    if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) pumpSwitch.on()
+    // Send an alert that it is off
+	if ((evt.value == "off") && (pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) switchOffAlert()
 }
 
 def switchOffAlert() {
