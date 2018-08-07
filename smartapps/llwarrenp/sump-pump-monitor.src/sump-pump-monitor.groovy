@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.5"
+    return "2.6"
 }
 
 /*
 * Change Log:
+* 2018-8-7   - (2.6) Added some "debounce" logic to alleviate sensor false positives within a 5 second period
 * 2018-7-30  - (2.5) Added checks to ensure pump is switched on, alerts if off, and an every 15 minutes check to turn on
 * 2018-7-12  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
 * 2018-6-26  - (2.3) Cleaned up logic and preferences to avoid unhandled errors, improved documentation
@@ -116,6 +117,8 @@ def checkFrequency(evt) {
 	if (lastTime == null) state[frequencyPumpFired(evt)] = now()
     // Pump has fired before but the last time it did so was outside the window of interest so just record the event
 	else if ((now() - lastTime) >= (frequency * 60000)) state[frequencyPumpFired(evt)] = now()
+    // Pump has "fired" too rapidly, a false positive reading, so "debounce" to require a 5 second gap
+    else if ((now() - lastTime) <= 5000) state[frequencyPumpFired(evt)] = now()
     // Pump has fired before and its within our specified window of interest so we need to possibly send an alert
 	else if ((now() - lastTime) <= (frequency * 60000)) {
 		def timePassed = (now() - lastTime) / 60000
