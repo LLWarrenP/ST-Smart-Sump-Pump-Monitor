@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.6"
+    return "2.7"
 }
 
 /*
 * Change Log:
+* 2018-10-20 - (2.7) Added a 15 second delay / recheck to further alleviate false positives from the off alerting
 * 2018-8-7   - (2.6) Added some "debounce" logic to alleviate sensor false positives within a 5 second period
 * 2018-7-30  - (2.5) Added checks to ensure pump is switched on, alerts if off, and an every 15 minutes check to turn on
 * 2018-7-12  - (2.4) Added alert for non-responsive sensor for malfunction, power outage / breaker off, or similar
@@ -165,11 +166,12 @@ def checkFrequency(evt) {
 def pollSwitch() {
 	// Ran every 15 minutes to ensure that the switch is on
     log.debug "checking ${pumpSwitch} status"
-	if ((pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) switchOffAlert()
     if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) {
         log.debug "${pumpSwitch} is switched off, turning on"
     	pumpSwitch.on()
     }
+    // Check to see if the switch still reports as off and alert if enabled after 15 seconds
+	if ((pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) runIn(15, switchOffAlert)
 }
 
 def checkSwitch(evt) {
@@ -180,31 +182,34 @@ def checkSwitch(evt) {
     }
     // Just to be sure, send the command again
     if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) pumpSwitch.on()
-    // Send an alert that it is off
-	if ((evt.value == "off") && (pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) switchOffAlert()
+    // Send an alert that it is off after 15 seconds
+	if ((evt.value == "off") && (pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) runIn(15, switchOffAlert)
 }
 
 def switchOffAlert() {
-	log.debug "sump pump sending switched off alert"
+	// Check if switch is still reporting as off after 15 seconds to avoid false positives from device / fluctuations in ST reporting
+	if (pumpSwitch.currentValue("switch") == "off") {
+		log.debug "sump pump sending switched off alert"
     
-    def msg = messageText ?: "Warning: ${pumpSwitch} is switched off.  Check smart device and pump if unexpected."
+    	def msg = messageText ?: "Warning: ${pumpSwitch} is switched off.  Check smart device and pump if unexpected."
 
-	if (!phone || pushAndPhone != "No") {
-		log.debug "sending push"
-		sendPush(msg)
-	}
+		if (!phone || pushAndPhone != "No") {
+			log.debug "sending push"
+			sendPush(msg)
+		}
 
-	if (phone) {
-		log.debug "sending SMS"
-		sendSms(phone, msg)
-	}
+		if (phone) {
+			log.debug "sending SMS"
+			sendSms(phone, msg)
+		}
+    }
 }
 
 def deviceHeartbeat(evt) {
 	// We got a message from the device so we can assume it is online / active so reset the alert
 	unschedule(heartbeatAlert)
-    runIn(heartbeat?.toInteger() * 3600, heartbeatAlert)
     log.debug "${multi} heartbeat"
+    runIn(heartbeat?.toInteger() * 3600, heartbeatAlert)
 }
 
 def heartbeatAlert() {
