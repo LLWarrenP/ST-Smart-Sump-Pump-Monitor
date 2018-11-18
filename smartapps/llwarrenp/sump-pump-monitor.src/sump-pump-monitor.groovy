@@ -129,7 +129,7 @@ def checkFrequency(evt) {
     // Pump has fired before but the last time it did so was outside the window of interest so just record the event
 	else if ((now() - lastTime) >= (frequency * 60000)) {
     	state[frequencyPumpFired(evt)] = now()
-        state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
+        if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
         state[cycleCount(evt)] = state[cycleCount(evt)] + 1
         if (state[cycleCount(evt)] >= 2) runIn(2 * alertfrequency * 3600, cycleEndAlert)
 		}
