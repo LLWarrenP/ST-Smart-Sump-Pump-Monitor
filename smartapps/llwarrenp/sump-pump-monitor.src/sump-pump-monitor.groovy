@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.7"
+    return "2.8"
 }
 
 /*
 * Change Log:
+* 2018-11-18 - (2.8) Added summary alert at end of cycle when the pump stops running on a regular basis
 * 2018-10-20 - (2.7) Added a 15 second delay / recheck to further alleviate false positives from the off alerting
 * 2018-8-7   - (2.6) Added some "debounce" logic to alleviate sensor false positives within a 5 second period
 * 2018-7-30  - (2.5) Added checks to ensure pump is switched on, alerts if off, and an every 15 minutes check to turn on
@@ -55,20 +56,22 @@ preferences {
 	section("Sump Pump Monitor v${appVersion()}\n\nLast Ran:\n   ${showLastDate(atomicState.lastActionTimeStamp)}\nLast Alert:\n   ${showLastDate(atomicState.lastAlertTimeStamp)}")
     section("Monitoring Settings") {
 		input "multi", "capability.accelerationSensor", title: "Monitor which acceleration sensor?", multiple: false, required: true
-        paragraph "This sensor will detect the inrush current as an acceleration"
+        paragraph "This sensor will detect the pump inrush current as an acceleration"
 		input "frequency", "decimal", title: "Over what time interval (minutes)?", description: "Minutes", range: "1..*", defaultValue: 30, required: true
         input "heartbeat", "decimal", title: "Alert me if the sensor has not provided status in this many hours:", defaultValue: 0, range: "0..*", required: false
         paragraph "Set this to zero (0) to disable.  This alert is to detect if the sensor is offline or otherwise not reporting for the set number of hours such as in the case where a power failure has occurred or a breaker has tripped.  Ensure that the device's normal operation is to report at least this frequent."
-        input "pumpSwitch", "capability.switch", title: "Control which switch?", multiple: false, required: true
+        input "pumpSwitch", "capability.switch", title: "Monitor which switch?", multiple: false, required: true
 		paragraph "This smart switch controls power to the sump pump and its inline physical switch (can be same device as the sensor if so equipped)"
  		input "boolOnAlways", "bool", title: "Keep the switch turned on at all times", required: false
         input "boolPollSwitch", "bool", title: "Check switch status every 15 minutes and turn it on if off", required: false
    		input "boolOffAlert", "bool", title: "Alert me if the switch is ever turned off", required: false
 	}
     section("Alert Settings"){
-		input "alertfrequency", "decimal", title: "Alert how often (hours)?", description: "Hours", range: "0..*", defaultValue: 24, required: true
-        paragraph "Since the pump may continue to fire at a steady rate, this suppresses excessive alerts after the initial alert"
-		input "messageText", "text", title: "Custom Alert Text (optional)", required: false
+		input "alertfrequency", "decimal", title: "Alert me about pump runs how frequently (hours)?", description: "Hours", range: "0..*", defaultValue: 24, required: true
+        paragraph "Since the pump may continue to fire at a steady rate, this suppresses additional alerts after the initial alert until this time elapses"
+		input "boolCycleAlert", "bool", title: "Also alert me when the pump stops running after twice this interval (optional)", required: false
+        paragraph "Sends a summary alert to let you know that the pump is no longer firing"
+        input "messageText", "text", title: "Custom Alert Text (optional)", required: false
 		input "phone", "phone", title: "Phone Number (for SMS, optional)", required: false
 		input "pushAndPhone", "enum", title: "Both Push and SMS?", required: false, options: ["Yes","No"]
 	}
@@ -113,13 +116,24 @@ def checkFrequency(evt) {
 
 	// Pump has fired so reset hearbeat, but check frequency afterwards
 	if (heartbeat?.toInteger() > 0) deviceHeartbeat(evt)
-    
+
+	// Track the number of cycles for end of cycling report alert
+	if (state[cycleCount(evt)] == null) state[cycleCount(evt)] = 0
+
 	// Pump has never fired before, it's the first time so just record the event
-	if (lastTime == null) state[frequencyPumpFired(evt)] = now()
+	if (lastTime == null) {
+    	state[frequencyPumpFired(evt)] = now()
+        state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
+        state[cycleCount(evt)] = 1
+		}
     // Pump has fired before but the last time it did so was outside the window of interest so just record the event
-	else if ((now() - lastTime) >= (frequency * 60000)) state[frequencyPumpFired(evt)] = now()
-    // Pump has "fired" too rapidly, a false positive reading, so "debounce" to require a 5 second gap
-    else if ((now() - lastTime) <= 5000) state[frequencyPumpFired(evt)] = now()
+	else if ((now() - lastTime) >= (frequency * 60000)) {
+    	state[frequencyPumpFired(evt)] = now()
+        state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
+        state[cycleCount(evt)] = 1
+		}
+	// Pump has "fired" too rapidly, a false positive reading, so "debounce" to require a 5 second gap
+    else if ((now() - lastTime) <= 5000) state[frequencyPumpFired(evt)] = lastTime
     // Pump has fired before and its within our specified window of interest so we need to possibly send an alert
 	else if ((now() - lastTime) <= (frequency * 60000)) {
 		def timePassed = (now() - lastTime) / 60000
@@ -127,9 +141,12 @@ def checkFrequency(evt) {
         if (timePassedRound == null) then timePassedRound = 1
 		if (alertfrequency == null) alertfrequency = 0
 
-		// The pump has fired so record it
+		// The pump has fired so record it and trigger / extend overall cycle time to 2x the alert cycle
 		state[frequencyPumpFired(evt)] = now()
-		log.debug("sump pump ${multi} fired twice in the last ${timePassedRound} minutes")
+        if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
+        state[cycleCount(evt)] = state[cycleCount(evt)] + 1
+		log.debug("sump pump ${multi} fired twice in the last ${timePassedRound} minutes (cycle: ${state[cycleCount(evt)]} runs since ${showLastDate(state[cycleStart(evt)])})")
+        runIn(2 * alertfrequency * 3600, cycleEndAlert)
 
 		// Check to see the last time we sent out an alert either never or some time in the past
 		def lastAlert = state[frequencyAlert(evt)]
@@ -161,6 +178,29 @@ def checkFrequency(evt) {
 
 	}
 
+}
+
+def cycleEndAlert() {
+	// Pump was firing but stopped so provide a summary alert if enabled
+	log.debug "sump pump has stopped regular firing at (${state[cycleCount(null)]} times since ${showLastDate(state[cycleStart(null)])})"
+    
+    if (boolCycleAlert) {
+    
+    	def msg = messageText ?: "Summary: ${multi} is no longer running on a regular basis.  The pump ran ${state[cycleCount(null)]} times between ${showLastDate(state[cycleStart(null)])} and ${showLastDate(state[lastActionTimeStamp(null)])}."
+
+		if (!phone || pushAndPhone != "No") {
+			log.debug "sending push"
+			sendPush(msg)
+		}
+
+		if (phone) {
+			log.debug "sending SMS"
+			sendSms(phone, msg)
+		}
+    }
+
+	// Reset the cycle counter
+    state[cycleCount(null)] = 0
 }
 
 def pollSwitch() {
@@ -234,6 +274,14 @@ private frequencyPumpFired(evt) {
 
 private frequencyAlert(evt) {
 	"lastAlertTimeStamp"
+}
+
+private cycleCount(evt) {
+	"cycleCount"
+}
+
+private cycleStart(evt) {
+	"cycleStart"
 }
 
 // END OF FILE
