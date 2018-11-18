@@ -130,7 +130,8 @@ def checkFrequency(evt) {
 	else if ((now() - lastTime) >= (frequency * 60000)) {
     	state[frequencyPumpFired(evt)] = now()
         state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
-        state[cycleCount(evt)] = 1
+        state[cycleCount(evt)] = state[cycleCount(evt)] + 1
+        if (state[cycleCount(evt)] >= 2) runIn(2 * alertfrequency * 3600, cycleEndAlert)
 		}
 	// Pump has "fired" too rapidly, a false positive reading, so "debounce" to require a 5 second gap
     else if ((now() - lastTime) <= 5000) state[frequencyPumpFired(evt)] = lastTime
@@ -143,7 +144,7 @@ def checkFrequency(evt) {
 
 		// The pump has fired so record it and trigger / extend overall cycle time to 2x the alert cycle
 		state[frequencyPumpFired(evt)] = now()
-        if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
+        if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = lastTime
         state[cycleCount(evt)] = state[cycleCount(evt)] + 1
 		log.debug("sump pump ${multi} fired twice in the last ${timePassedRound} minutes (cycle: ${state[cycleCount(evt)]} runs since ${showLastDate(state[cycleStart(evt)])})")
         runIn(2 * alertfrequency * 3600, cycleEndAlert)
