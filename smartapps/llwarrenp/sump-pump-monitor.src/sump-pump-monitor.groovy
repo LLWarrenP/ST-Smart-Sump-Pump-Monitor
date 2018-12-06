@@ -21,7 +21,7 @@ def appVersion() {
 
 /*
 * Change Log:
-* 2018-11-18 - (2.8) Added summary alert at end of cycle when the pump stops running on a regular basis
+* 2018-11-22 - (2.8) Added summary alert at end of cycle when the pump stops running on a regular basis (re-released to fix issue)
 * 2018-10-20 - (2.7) Added a 15 second delay / recheck to further alleviate false positives from the off alerting
 * 2018-8-7   - (2.6) Added some "debounce" logic to alleviate sensor false positives within a 5 second period
 * 2018-7-30  - (2.5) Added checks to ensure pump is switched on, alerts if off, and an every 15 minutes check to turn on
@@ -187,7 +187,7 @@ def cycleEndAlert() {
     
     if (boolCycleAlert) {
     
-    	def msg = messageText ?: "Summary: ${multi} is no longer running on a regular basis.  The pump ran ${state[cycleCount(null)]} times between ${showLastDate(state[cycleStart(null)])} and ${showLastDate(state[lastActionTimeStamp(null)])}."
+    	def msg = messageText ?: "Summary: ${multi} is no longer running on a regular basis.  The pump ran ${state[cycleCount(null)]} times between ${showLastDate(state[cycleStart(null)])} and ${showLastDate(state[frequencyPumpFired(null)])}."
 
 		if (!phone || pushAndPhone != "No") {
 			log.debug "sending push"
@@ -212,6 +212,7 @@ def pollSwitch() {
     	pumpSwitch.on()
     }
     // Check to see if the switch still reports as off and alert if enabled after 15 seconds
+    if (pumpSwitch.currentValue("switch") == "off") multi.each { sen ->	sen.capabilities.each { cap -> if (cap.name.toLowerCase() == "refresh") multi.refresh() } }
 	if ((pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) runIn(15, switchOffAlert)
 }
 
@@ -224,11 +225,13 @@ def checkSwitch(evt) {
     // Just to be sure, send the command again
     if ((pumpSwitch.currentValue("switch") == "off") && (boolOnAlways)) pumpSwitch.on()
     // Send an alert that it is off after 15 seconds
+    multi.each { sen ->	sen.capabilities.each { cap -> if (cap.name.toLowerCase() == "refresh") multi.refresh() } }
 	if ((evt.value == "off") && (pumpSwitch.currentValue("switch") == "off") && (boolOffAlert)) runIn(15, switchOffAlert)
 }
 
 def switchOffAlert() {
 	// Check if switch is still reporting as off after 15 seconds to avoid false positives from device / fluctuations in ST reporting
+    multi.each { sen ->	sen.capabilities.each { cap -> if (cap.name.toLowerCase() == "refresh") multi.refresh() } }
 	if (pumpSwitch.currentValue("switch") == "off") {
 		log.debug "sump pump sending switched off alert"
     
