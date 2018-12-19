@@ -16,11 +16,12 @@
  */
  
 def appVersion() {
-    return "2.8"
+    return "2.9"
 }
 
 /*
 * Change Log:
+* 2018-12-16 - (2.9) Simplified code, improved reliability of end of cycle alert
 * 2018-11-22 - (2.8) Added summary alert at end of cycle when the pump stops running on a regular basis (re-released to fix issue)
 * 2018-10-20 - (2.7) Added a 15 second delay / recheck to further alleviate false positives from the off alerting
 * 2018-8-7   - (2.6) Added some "debounce" logic to alleviate sensor false positives within a 5 second period
@@ -119,19 +120,28 @@ def checkFrequency(evt) {
 
 	// Track the number of cycles for end of cycling report alert
 	if (state[cycleCount(evt)] == null) state[cycleCount(evt)] = 0
+    if ((state[cycleStart(evt)] != null) && (state[cycleStart(evt)] > (lastTime + (2 * alertfrequency * 3600)))) {
+    	state[cycleStart(evt)] = null
+        state[cycleCount(evt)] = 0
+    }
 
 	// Pump has never fired before, it's the first time so just record the event
 	if (lastTime == null) {
     	state[frequencyPumpFired(evt)] = now()
         state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
         state[cycleCount(evt)] = 1
+        // Set up cycle tracking
+        unschedule(cycleEndAlert)
+        runIn(2 * alertfrequency * 3600, cycleEndAlert)
 		}
-    // Pump has fired before but the last time it did so was outside the window of interest so just record the event
+    // Pump has fired before some time in the past
 	else if ((now() - lastTime) >= (frequency * 60000)) {
     	state[frequencyPumpFired(evt)] = now()
         if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = state[frequencyPumpFired(evt)]
         state[cycleCount(evt)] = state[cycleCount(evt)] + 1
-        if (state[cycleCount(evt)] >= 2) runIn(2 * alertfrequency * 3600, cycleEndAlert)
+        // Set up cycle tracking
+        unschedule(cycleEndAlert)
+        runIn(2 * alertfrequency * 3600, cycleEndAlert)
 		}
 	// Pump has "fired" too rapidly, a false positive reading, so "debounce" to require a 5 second gap
     else if ((now() - lastTime) <= 5000) state[frequencyPumpFired(evt)] = lastTime
@@ -147,6 +157,8 @@ def checkFrequency(evt) {
         if (state[cycleStart(evt)] == null) state[cycleStart(evt)] = lastTime
         state[cycleCount(evt)] = state[cycleCount(evt)] + 1
 		log.debug("sump pump ${multi} fired twice in the last ${timePassedRound} minutes (cycle: ${state[cycleCount(evt)]} runs since ${showLastDate(state[cycleStart(evt)])})")
+        // Set up cycle tracking
+        unschedule(cycleEndAlert)
         runIn(2 * alertfrequency * 3600, cycleEndAlert)
 
 		// Check to see the last time we sent out an alert either never or some time in the past
@@ -160,19 +172,8 @@ def checkFrequency(evt) {
 		if (((now() - lastAlert)) >= (alertfrequency * 3600000)) {
 			log.debug "sump pump sending alerts"
 			state[frequencyAlert(evt)] = now()
-
 			def msg = messageText ?: "Warning: ${multi} has run twice in the last ${timePassedRound} minutes."
-
-			if (!phone || pushAndPhone != "No") {
-				log.debug "sending push"
-				sendPush(msg)
-			}
-
-			if (phone) {
-				log.debug "sending SMS"
-				sendSms(phone, msg)
-			}
-            
+			sendNotification(msg)
 		}
         // Otherwise, if it is inside the window we want to suppress the alert but we should log it to the debug log
 		else log.debug "sump pump suppressing alert due to alert frequency"
@@ -182,26 +183,19 @@ def checkFrequency(evt) {
 }
 
 def cycleEndAlert() {
-	// Pump was firing but stopped so provide a summary alert if enabled
-	log.debug "sump pump has stopped regular firing at (${state[cycleCount(null)]} times since ${showLastDate(state[cycleStart(null)])})"
-    
-    if (boolCycleAlert) {
-    
-    	def msg = messageText ?: "Summary: ${multi} is no longer running on a regular basis.  The pump ran ${state[cycleCount(null)]} times between ${showLastDate(state[cycleStart(null)])} and ${showLastDate(state[frequencyPumpFired(null)])}."
-
-		if (!phone || pushAndPhone != "No") {
-			log.debug "sending push"
-			sendPush(msg)
-		}
-
-		if (phone) {
-			log.debug "sending SMS"
-			sendSms(phone, msg)
-		}
-    }
-
+	// If pump was firing in a cycle (more than once), send alerts and reset cycle
+	if (state[cycleCount(null)] > 1) {
+		// Pump was firing but stopped so provide a summary alert if enabled
+		log.debug "sump pump has stopped regular firing at (${state[cycleCount(null)]} times since ${showLastDate(state[cycleStart(null)])})"
+	    if (boolCycleAlert) {
+	    	def msg = messageText ?: "Sump Pump Monitor Summary: ${multi} is no longer running on a regular basis.  The pump ran ${state[cycleCount(null)]} times between ${showLastDate(state[cycleStart(null)])} and ${showLastDate(state[frequencyPumpFired(null)])}."
+			sendNotification(msg)
+	    }
+	}
 	// Reset the cycle counter
+	unschedule(cycleEndAlert)
     state[cycleCount(null)] = 0
+    state[cycleStart(null)] = null
 }
 
 def pollSwitch() {
@@ -234,18 +228,8 @@ def switchOffAlert() {
     multi.each { sen ->	sen.capabilities.each { cap -> if (cap.name.toLowerCase() == "refresh") multi.refresh() } }
 	if (pumpSwitch.currentValue("switch") == "off") {
 		log.debug "sump pump sending switched off alert"
-    
-    	def msg = messageText ?: "Warning: ${pumpSwitch} is switched off.  Check smart device and pump if unexpected."
-
-		if (!phone || pushAndPhone != "No") {
-			log.debug "sending push"
-			sendPush(msg)
-		}
-
-		if (phone) {
-			log.debug "sending SMS"
-			sendSms(phone, msg)
-		}
+     	def msg = messageText ?: "Warning: ${pumpSwitch} is switched off.  Check smart device and pump if unexpected."
+		sendNotification(msg)
     }
 }
 
@@ -258,9 +242,12 @@ def deviceHeartbeat(evt) {
 
 def heartbeatAlert() {
 	log.debug "sump pump sending heartbeat alert"
-
 	def msg = messageText ?: "Warning: ${multi} has not reported status in the last ${heartbeat} hours.  Check pump circuit for power and operation."
+	sendNotification(msg)
+}
 
+def sendNotification(msg) {
+	// Send notifications per app settings
 	if (!phone || pushAndPhone != "No") {
 		log.debug "sending push"
 		sendPush(msg)
